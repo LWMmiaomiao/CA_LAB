@@ -13,9 +13,12 @@ module regfile(
 );
 reg [31:0] rf[31:0];
 
+
 //WRITE
 always @(posedge clk) begin
-    if (we) rf[waddr] <= wdata;
+    if (we) begin
+        rf[waddr] <= wdata;
+    end
 end
 
 //READ OUT 1
