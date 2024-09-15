@@ -5,8 +5,8 @@ module mycpu_top(
     output wire [ 3:0] inst_sram_we,
     output wire [31:0] inst_sram_addr,
     output wire [31:0] inst_sram_wdata,
-    input  wire [31:0] inst_sram_rdata,//PC
-    output wire        inst_sram_en,//接收PC
+    input  wire [31:0] inst_sram_rdata,
+    output wire        inst_sram_en,
     // data sram interface
     output wire [ 3:0] data_sram_we,
     output wire [31:0] data_sram_addr,
