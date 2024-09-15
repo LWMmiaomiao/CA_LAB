@@ -4,7 +4,7 @@ module if_stage(
     input  wire        valid,
     input  wire [31:0] inst_sram_rdata,
     input  wire [32:0] br_signal,//{32：32}br_taken, {31：0}br_target
-    input  wire        ID_allowin,//暂时不考虑上一节所说的转移指令在译码阶段等待延迟槽指令取回，所以ID_allowin恒为1
+    input  wire        ID_allowin,
 
     output wire [ 3:0] inst_sram_we,
     output wire        inst_sram_en,
