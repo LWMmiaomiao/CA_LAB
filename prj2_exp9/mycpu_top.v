@@ -5,14 +5,14 @@ module mycpu_top(
     output wire [ 3:0] inst_sram_we,
     output wire [31:0] inst_sram_addr,
     output wire [31:0] inst_sram_wdata,
-    input  wire [31:0] inst_sram_rdata,
-    output wire        inst_sram_en,
+    input  wire [31:0] inst_sram_rdata,//PC
+    output wire        inst_sram_en,//接收PC
     // data sram interface
     output wire [ 3:0] data_sram_we,
     output wire [31:0] data_sram_addr,
     output wire [31:0] data_sram_wdata,
     input  wire [31:0] data_sram_rdata,
-    output wire        data_sram_en,
+    output wire        data_sram_en,//接收内存数据
     // trace debug interface
     output wire [31:0] debug_wb_pc,
     output wire [ 3:0] debug_wb_rf_we,
@@ -27,21 +27,20 @@ wire [31:0] rf_rdata2_bypassing;
 wire        Load_DataHazard;
 
 reg         valid;
-wire        IF_allowin;
-wire        br_taken_cancel;
+wire        IF_allowin;// add in 9
+wire        br_taken_cancel;// add in 9
 wire [32:0] br_signal;
-assign      br_taken_cancel = br_signal[32];
+assign      br_taken_cancel = br_signal[32];// add in 9
 always @(posedge clk) begin
     if (reset)
         valid <= 1'b0;
     else if(IF_allowin) begin
         valid <= 1'b1;
     end
-    else if(br_taken_cancel) begin
-        valid <= 1'b0;// 位于取指阶段的指令可能因为等待指令取回而停留, 在本实验下用不到
+    else if(br_taken_cancel) begin// add in 9 当前用不到
+        valid <= 1'b0;//位于取指阶段的指令可能因为等待指令取回而停留
     end
 end
-
 
 
 wire        ID_allowin;
@@ -63,12 +62,10 @@ if_stage if_stage(
     .inst_sram_addr(inst_sram_addr),
     .inst_sram_wdata(inst_sram_wdata),
     .IF_readygo(IF_readygo),
-    .IF_allowin(IF_allowin),
+    .IF_allowin(IF_allowin),// add in 9
     .IDsignal_valid(IDsignal_valid),
     .ID_signal(ID_signal)
 );
-
-
 
 reg [63:0] ID_signal_reg;
 reg        IDsignal_valid_reg;
@@ -77,15 +74,17 @@ always @(posedge clk) begin
         IDsignal_valid_reg <= 1'b0;
         ID_signal_reg      <= 64'b0;
     end
-    else if(br_taken_cancel) begin
+    else if(br_taken_cancel) begin// add in 9
         IDsignal_valid_reg <= 1'b0;
     end
     else if (IF_readygo && ID_allowin) begin
         IDsignal_valid_reg <= IDsignal_valid;
         ID_signal_reg      <= ID_signal;
     end
+    // else if (!IF_readygo & ID_allowin) begin
+    //     IDsignal_valid_reg <= 1'b0;
+    // end
 end
-
 wire [ 4:0] rf_raddr1;
 wire [31:0] rf_rdata1;
 wire [ 4:0] rf_raddr2;
@@ -98,8 +97,10 @@ wire [31:0] alu_src1;
 wire [31:0] alu_src2;
 wire        EXE_allowin;
 wire        ID_readygo;
+//wire        blocking;
 wire        EXE_signal_valid;
 wire [150:0]EXE_signal;
+//assign blocking = 1'b0;
 
 //ID阶段得到的inst是上拍末IF中nextpc对应的指令
 id_stage id_stage(
@@ -120,8 +121,6 @@ id_stage id_stage(
     .EXE_signal_valid(EXE_signal_valid),
     .EXE_signal(EXE_signal)
 );
-
-
 
 reg [150:0]EXE_signal_reg;
 reg        EXEsignal_valid_reg;
@@ -162,8 +161,6 @@ exe_stage exe_stage(
     .EXE_allowin(EXE_allowin)
 );
 
-
-
 reg [70:0] MEM_signal_reg;
 reg        MEMsignal_valid_reg;
 always @(posedge clk) begin
@@ -175,6 +172,9 @@ always @(posedge clk) begin
         MEMsignal_valid_reg <= MEM_signal_valid;
         MEM_signal_reg      <= MEM_signal;
     end
+    // else if (!EXE_readygo && MEM_allowin) begin
+    //     MEMsignal_valid_reg <= 1'b0;
+    // end
 end
 wire        WB_allowin;
 wire        WB_signal_valid;
@@ -197,8 +197,6 @@ mem_stage mem_stage(
     .MEM_allowin(MEM_allowin)
 );
 
-
-
 reg [69:0] WB_signal_reg;
 reg        WBsignal_valid_reg;
 always @(posedge clk) begin
@@ -210,6 +208,9 @@ always @(posedge clk) begin
         WBsignal_valid_reg <= WB_signal_valid;
         WB_signal_reg      <= WB_signal;
     end
+    // else if (!EXE_readygo && MEM_allowin) begin
+    //     MEMsignal_valid_reg <= 1'b0;
+    // end
 end
 wire WB_readygo;
 
@@ -230,6 +231,7 @@ wb_stage wb_stage(
     .WB_allowin(WB_allowin)
 );
 
+
 regfile u_regfile(
     .clk    (clk      ),
     .raddr1 (rf_raddr1),
@@ -241,13 +243,12 @@ regfile u_regfile(
     .wdata  (rf_wdata )
     );
 
-
-
 wire [ 2:0] rf_we_signals = {MEM_signal[37], WB_signal[37], rf_we};// {rf_we_EXE, rf_we_MEM, rf_we_WB}
 wire [ 2:0] valid_signals = {EXEsignal_valid_reg, MEMsignal_valid_reg, WBsignal_valid_reg};
 wire [14:0] rf_waddr_signals = {MEM_signal[36:32], WB_signal[36:32], rf_waddr};// {rf_waddr_EXE, rf_waddr_MEM, rf_waddr_WB}
 wire [95:0] rf_wdata_signals = {MEM_signal[31:0], WB_signal[31:0], rf_wdata};// {rf_wdata_EXE, rf_wdata_MEM, rf_wdata_WB}
 wire [ 1:0] ld_signals = {ld_EXE, ld_MEM};// {ld_EXE, ld_MEM}
+
 
 DataHazard DataHazard(
     //.clk(clk),

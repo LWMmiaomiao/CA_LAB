@@ -16,6 +16,7 @@ module exe_stage(
     output wire        EXE_allowin
 );
 wire        rf_we;
+wire        rf_we_EXE;
 wire [ 4:0] rf_waddr;
 wire [31:0] rkd_value;
 wire [ 3:0] mem_we;
@@ -27,7 +28,7 @@ wire [31:0] alu_result;
 wire [31:0] pc;
 
 //wire [] other_signal;
-assign {pc, rf_we, rf_waddr, rkd_value, res_from_mem, mem_we, alu_op, alu_src1, alu_src2} = signal;
+assign {pc, rf_we_EXE, rf_waddr, rkd_value, res_from_mem, mem_we, alu_op, alu_src1, alu_src2} = signal;
 
 alu u_alu(
     .alu_op     (alu_op    ),
@@ -41,6 +42,7 @@ assign data_sram_we    = mem_we & {4{valid}};//注意按位与不能写成逻辑
 assign data_sram_addr  = alu_result;
 assign data_sram_wdata = rkd_value;
 
+assign rf_we = rf_we_EXE;// && valid;
 assign MEM_signal_valid = valid;
 assign MEM_signal = {pc, res_from_mem, rf_we, rf_waddr, alu_result};//32+1+1+5+32
 assign ld_EXE = res_from_mem && valid;
