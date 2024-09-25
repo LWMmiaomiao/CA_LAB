@@ -14,21 +14,16 @@ module wb_stage(
     output wire        WB_readygo,
     output wire        WB_allowin
 );
-wire [31:0] pc;
-
+wire [31:0] pc_WB;
 wire [31:0] final_result;
 
-wire [31:0] mem_result;
-
 wire        rf_we_WB;
-assign {pc, rf_we_WB, rf_waddr, final_result} = signal;
+assign {pc_WB, rf_we_WB, rf_waddr, final_result} = signal;
 assign rf_we = rf_we_WB && valid;
-
-
 
 assign rf_wdata = final_result;
 
-assign debug_wb_pc       = pc;
+assign debug_wb_pc       = pc_WB;
 assign debug_wb_rf_we    = {4{rf_we}};
 assign debug_wb_rf_wnum  = rf_waddr;
 assign debug_wb_rf_wdata = final_result;
