@@ -16,6 +16,7 @@ module id_stage(
     output wire        EXE_signal_valid,
     output wire [150:0]EXE_signal
 );
+
 wire [31:0] pc_ID;
 wire [31:0] inst;
 wire        br_taken;
