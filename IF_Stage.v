@@ -3,16 +3,18 @@
 module IF_Stage(
     input  wire        clk,
     input  wire        resetn,
-    // inst sram interface
+    // inst cache interface
     output wire        inst_sram_req,
     output wire        inst_sram_wr,
     output wire [ 1:0] inst_sram_size,
     output wire [ 3:0] inst_sram_wstrb,
     output wire [31:0] inst_sram_addr,
     output wire [31:0] inst_sram_wdata,
+    output             icache_op,
     input  wire        inst_sram_addr_ok,
     input  wire        inst_sram_data_ok,
     input  wire [31:0] inst_sram_rdata,
+    
     output             if_exception,
 
     input  wire [ 3:0] axi_arid,
@@ -84,7 +86,7 @@ module IF_Stage(
     
 //-----IF stage control signal-----
     assign preif_ready_go   = (inst_sram_req & inst_sram_addr_ok);
-    assign to_if_valid      = preif_ready_go & if_allowin & ~preif_cancel & ~if_flush;
+    assign to_if_valid      = preif_ready_go & if_allowin & ~preif_cancel;
 
     assign if_ready_go      = ((inst_sram_data_ok | if_inst_reg_valid) & ~inst_cancel) | 
                               (if_adef_excep | if_pif_excep | if_ppi_excep | if_tlbr_excep);
@@ -121,7 +123,7 @@ module IF_Stage(
             csr_rvalue_reg <= 32'b0;
             wb_ertn_flush_valid_reg <= 1'b0;
         end
-        else if(wb_ertn_flush_valid) begin
+        else if(wb_ertn_flush_valid& ~(inst_sram_req & inst_sram_addr_ok)) begin
             csr_rvalue_reg <= csr_rvalue;
             wb_ertn_flush_valid_reg <= 1'b1;
         end
@@ -134,7 +136,7 @@ module IF_Stage(
             ex_entry_reg <= 32'b0;
             wb_csr_ex_valid_reg <= 1'b0;
         end
-        else if(wb_csr_ex_valid) begin
+        else if(wb_csr_ex_valid & ~(inst_sram_req & inst_sram_addr_ok)) begin
             ex_entry_reg <= ex_entry;
             wb_csr_ex_valid_reg <= 1'b1;
         end
@@ -147,7 +149,7 @@ module IF_Stage(
             br_target_reg <= 32'b0;
             br_taken_reg <= 1'b0;
         end
-        else if(br_taken) begin
+        else if(br_taken & ~(inst_sram_req & inst_sram_addr_ok)) begin
             br_target_reg <= br_target;
             br_taken_reg <= 1'b1;
         end
@@ -170,7 +172,7 @@ module IF_Stage(
             wb_pc_reg <= 32'b0;
             wb_tlb_refetch_valid_reg <= 1'b0;
         end
-        else if (wb_tlb_refetch_valid) begin
+        else if (wb_tlb_refetch_valid& ~(inst_sram_req & inst_sram_addr_ok)) begin
             wb_pc_reg <= wb_pc;
             wb_tlb_refetch_valid_reg <= 1'b1;
         end
@@ -194,8 +196,8 @@ module IF_Stage(
     always @(posedge clk) begin
         if (~resetn)
             preif_cancel <= 1'b0;
-        else if ((inst_sram_req | br_stall) & (wb_csr_ex_valid | wb_tlb_refetch_valid | wb_ertn_flush_valid | br_taken | (br_stall | br_stall_reg) & inst_sram_addr_ok ) & ~axi_arid[0])
-            preif_cancel <= 1'b1;
+        //else if ((inst_sram_req | br_stall) & (wb_csr_ex_valid | wb_tlb_refetch_valid | wb_ertn_flush_valid | br_taken | (br_stall | br_stall_reg) & inst_sram_addr_ok ) & ~axi_arid[0])
+            //preif_cancel <= 1'b1;
         else if (inst_sram_data_ok & ~inst_cancel)
             preif_cancel <= 1'b0;
     end
@@ -215,14 +217,14 @@ module IF_Stage(
         end
         else if (if_to_id_valid & id_allowin | (wb_csr_ex_valid | wb_tlb_refetch_valid | wb_ertn_flush_valid | br_taken)) //inst has been passed to ID or canceled
             if_inst_reg_valid <= 1'b0;
-        else if (~if_inst_reg_valid & inst_sram_data_ok & ~inst_cancel & ~preif_cancel) begin
+        else if (~if_inst_reg_valid & inst_sram_data_ok & ~inst_cancel & ~preif_cancel & if_valid) begin
             if_inst_reg_valid <= 1'b1;
             if_inst_reg <= if_to_id_inst;
         end
     end
 
-    assign if_inst          = (inst_sram_data_ok & ~inst_cancel) ? inst_sram_rdata : if_inst_reg;
-    assign if_to_id_inst    = (if_inst_reg_valid)? if_inst_reg : if_inst;
+    assign if_inst          =  inst_sram_rdata;
+    assign if_to_id_inst    =  (if_inst_reg_valid & ~(inst_sram_data_ok & ~inst_cancel))? if_inst_reg : if_inst;
     
     assign if_to_id_data    = {if_to_id_inst,     // 32-63
                                if_pc};      // 0-31   
