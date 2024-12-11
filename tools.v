@@ -11,18 +11,6 @@ end endgenerate
 endmodule
 
 
-module decoder_3_8(
-    input  wire [ 2:0] in,
-    output wire [ 7:0] out
-);
-
-genvar i;
-generate for (i=0; i<8; i=i+1) begin : gen_for_dec_3_8
-    assign out[i] = (in == i);
-end endgenerate
-
-endmodule
-
 module decoder_4_16(
     input  wire [ 3:0] in,
     output wire [15:0] out
@@ -55,7 +43,7 @@ module decoder_6_64(
 );
 
 genvar i;
-generate for (i=0; i<64; i=i+1) begin : gen_for_dec_6_64
+generate for (i=0; i<63; i=i+1) begin : gen_for_dec_6_64
     assign out[i] = (in == i);
 end endgenerate
 

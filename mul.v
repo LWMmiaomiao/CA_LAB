@@ -1,270 +1,244 @@
-module mul(
-    input  wire         mul_clk,
-    input  wire         resetn,
-    input  wire         mul_signed,
-    input  wire [31:0]  x,
-    input  wire [31:0]  y,
-    output wire [63:0]  result
+// 32位Booth两位乘需要生成16个部分积
+// 32位无符号数乘法→34位有符号数乘法，需17个部分积
+module Adder (
+    input   [63:0] in1,
+    input   [63:0] in2,
+    input   [63:0] in3,
+    output  [63:0] C,
+    output  [63:0] S
 );
+    assign S  = in1 ^ in2 ^ in3;
+    assign C = {(in1 & in2 | in1 & in3 | in2 & in3), 1'b0} ;
+endmodule
 
-    reg reset;
+module Wallace_Mul (
+    input          mul_clk,
+    input          resetn,
+    input          mul_signed,
+    input   [31:0] A,
+    input   [31:0] B,
+    output  [63:0] result
+);
+    reg  [31:0] A_reg;
+    reg  [31:0] B_reg;
+    wire [63:0] A_add;  
+    wire [63:0] A_sub;
+    wire [63:0] A2_add;
+    wire [63:0] A2_sub;
+    wire [34:0] sel_x;
+    wire [34:0] sel_2x;
+    wire [34:0] sel_neg_x;
+    wire [34:0] sel_neg_2x;
+    wire [34:0] sel_0;
+    wire [16:0] sel_x_val;
+    wire [16:0] sel_2x_val;
+    wire [16:0] sel_neg_x_val;
+    wire [16:0] sel_neg_2x_val;
+    wire [16:0] sel_0_val;
+    wire [18:0] debug;
+    // 扩展成34位以兼容无符号数乘法（偶数位易于处理）
+    wire [33:0] B_r;
+    wire [33:0] B_m;
+    wire [33:0] B_l;
+    wire [63:0] P [16:0];   // 未对齐的部分积
+
     always @(posedge mul_clk) begin
-            reset <= ~resetn;
+        if(~resetn)
+            {A_reg, B_reg} <= 64'b0;
+        else    
+            {A_reg, B_reg} <= {A, B};
     end
+    assign A_add       = {{32{A[31] & mul_signed}}, A};
+    assign A_sub       = ~ A_add + 1'b1;
+    assign A2_add      = {A_add, 1'b0};
+    assign A2_sub      = ~A2_add + 1'b1; 
+    assign B_m  = {{2{B[31] & mul_signed}}, B};
+    assign B_l  = {1'b0, B_m[33:1]};
+    assign B_r  = {B_m[32:0], 1'b0};
 
-    wire [67:0] p [16:0];
-    wire [16:0] c;
-    reg  [16:0] c_reg;
+    assign sel_neg_x   = ( B_l &  B_m & ~B_r) | (B_l & ~B_m & B_r);    // 110, 101
+    assign sel_x       = (~B_l &  B_m & ~B_r) | (~B_l & ~B_m& B_r);    // 010, 001
+    assign sel_neg_2x  = ( B_l & ~B_m & ~B_r) ;                      //  100
+    assign sel_2x      = (~B_l & B_m & B_r);                         // 011
+    assign sel_0       = (B_l & B_m & B_r) | (~B_l & ~B_m & ~B_r);     // 000, 111
 
-    wire [14:0] cout [67:0];
-    wire [67:0] c_wal;
-    wire [67:0] s;
-    wire [63:0] add_B;
+    // 奇数位才是有效的选取信号
+    assign sel_x_val    = { sel_x[32], sel_x[30], sel_x[28], sel_x[26], sel_x[24],
+                            sel_x[22], sel_x[20], sel_x[18], sel_x[16],
+                            sel_x[14], sel_x[12], sel_x[10], sel_x[ 8],
+                            sel_x[ 6], sel_x[ 4], sel_x[ 2], sel_x[ 0]};
+    assign sel_neg_x_val= { sel_neg_x[32], sel_neg_x[30], sel_neg_x[28], sel_neg_x[26], sel_neg_x[24],
+                            sel_neg_x[22], sel_neg_x[20], sel_neg_x[18], sel_neg_x[16],
+                            sel_neg_x[14], sel_neg_x[12], sel_neg_x[10], sel_neg_x[ 8],
+                            sel_neg_x[ 6], sel_neg_x[ 4], sel_neg_x[ 2], sel_neg_x[ 0]};     
+    assign sel_2x_val   =  {sel_2x[32], sel_2x[30], sel_2x[28], sel_2x[26], sel_2x[24],
+                            sel_2x[22], sel_2x[20], sel_2x[18], sel_2x[16],
+                            sel_2x[14], sel_2x[12], sel_2x[10], sel_2x[ 8],
+                            sel_2x[ 6], sel_2x[ 4], sel_2x[ 2], sel_2x[ 0]};        
+    assign sel_neg_2x_val= {sel_neg_2x[32], sel_neg_2x[30], sel_neg_2x[28], sel_neg_2x[26], sel_neg_2x[24],
+                            sel_neg_2x[22], sel_neg_2x[20], sel_neg_2x[18], sel_neg_2x[16],
+                            sel_neg_2x[14], sel_neg_2x[12], sel_neg_2x[10], sel_neg_2x[ 8],
+                            sel_neg_2x[ 6], sel_neg_2x[ 4], sel_neg_2x[ 2], sel_neg_2x[ 0]};   
+    assign sel_0_val    =  {sel_0[32], sel_0[30], sel_0[28], sel_0[26], sel_0[24],
+                            sel_0[22], sel_0[20], sel_0[18], sel_0[16],
+                            sel_0[14], sel_0[12], sel_0[10], sel_0[ 8],
+                            sel_0[ 6], sel_0[ 4], sel_0[ 2], sel_0[ 0]}; 
+    // debug信号应为0FFFF                                                                                              
+    assign debug        = sel_x_val + sel_neg_2x_val + sel_neg_x_val + sel_2x_val + sel_0_val;
+    // 十六个未对齐的部分积
+    assign {P[16], P[15], P[14], P[13], P[12],
+            P[11], P[10], P[ 9], P[ 8],
+            P[ 7], P[ 6], P[ 5], P[ 4],
+            P[ 3], P[ 2], P[ 1], P[ 0]} 
+            =  {{64{sel_x_val[16]}}, {64{sel_x_val[15]}}, {64{sel_x_val[14]}}, {64{sel_x_val[13]}}, {64{sel_x_val[12]}},
+                {64{sel_x_val[11]}}, {64{sel_x_val[10]}}, {64{sel_x_val[ 9]}}, {64{sel_x_val[ 8]}},
+                {64{sel_x_val[ 7]}}, {64{sel_x_val[ 6]}}, {64{sel_x_val[ 5]}}, {64{sel_x_val[ 4]}},
+                {64{sel_x_val[ 3]}}, {64{sel_x_val[ 2]}}, {64{sel_x_val[ 1]}}, {64{sel_x_val[ 0]}}} & {17{A_add}} |
+               {{64{sel_neg_x_val[16]}}, {64{sel_neg_x_val[15]}}, {64{sel_neg_x_val[14]}}, {64{sel_neg_x_val[13]}}, {64{sel_neg_x_val[12]}},
+                {64{sel_neg_x_val[11]}}, {64{sel_neg_x_val[10]}}, {64{sel_neg_x_val[ 9]}}, {64{sel_neg_x_val[ 8]}},
+                {64{sel_neg_x_val[ 7]}}, {64{sel_neg_x_val[ 6]}}, {64{sel_neg_x_val[ 5]}}, {64{sel_neg_x_val[ 4]}},
+                {64{sel_neg_x_val[ 3]}}, {64{sel_neg_x_val[ 2]}}, {64{sel_neg_x_val[ 1]}}, {64{sel_neg_x_val[ 0]}}}  & {17{A_sub}} |
+               {{64{sel_2x_val[16]}}, {64{sel_2x_val[15]}}, {64{sel_2x_val[14]}}, {64{sel_2x_val[13]}}, {64{sel_2x_val[12]}},
+                {64{sel_2x_val[11]}}, {64{sel_2x_val[10]}}, {64{sel_2x_val[ 9]}}, {64{sel_2x_val[ 8]}},
+                {64{sel_2x_val[ 7]}}, {64{sel_2x_val[ 6]}}, {64{sel_2x_val[ 5]}}, {64{sel_2x_val[ 4]}},
+                {64{sel_2x_val[ 3]}}, {64{sel_2x_val[ 2]}}, {64{sel_2x_val[ 1]}}, {64{sel_2x_val[ 0]}}} & {17{A2_add}} |
+               {{64{sel_neg_2x_val[16]}}, {64{sel_neg_2x_val[15]}}, {64{sel_neg_2x_val[14]}}, {64{sel_neg_2x_val[13]}}, {64{sel_neg_2x_val[12]}},
+                {64{sel_neg_2x_val[11]}}, {64{sel_neg_2x_val[10]}}, {64{sel_neg_2x_val[ 9]}}, {64{sel_neg_2x_val[ 8]}},
+                {64{sel_neg_2x_val[ 7]}}, {64{sel_neg_2x_val[ 6]}}, {64{sel_neg_2x_val[ 5]}}, {64{sel_neg_2x_val[ 4]}},
+                {64{sel_neg_2x_val[ 3]}}, {64{sel_neg_2x_val[ 2]}}, {64{sel_neg_2x_val[ 1]}}, {64{sel_neg_2x_val[ 0]}}} & {17{A2_sub}}; 
 
-    wire [33:0] A;
-    wire [33:0] B;
-
-    wire [63:0] result_adder_64; 
-
-    assign A = mul_signed ? {{2{x[31]}}, x}: {{2{1'b0}}, x};
-    assign B = mul_signed ? {{2{y[31]}}, y}: {{2{1'b0}}, y};
-
-    always @(posedge mul_clk) begin
-        if (~resetn)
-            c_reg <= 17'b0;
-        else
-            c_reg <= c;
-    end
-
-    assign add_B = {c_wal[62:0], c_reg[15]};
-    adder_64 adder_64(
-        .Cin(c_reg[16]),
-        .A(s[63:0]),
-        .B(add_B),
-        .S(result_adder_64),
-        .Cout()
+//-----------------------------------------Level 1--------------------------------------------- 
+    wire [63:0] level_1 [11:0];
+    Adder adder1_1 (
+        .in1({P[15], 30'b0}),
+        .in2({P[14], 28'b0}),
+        .in3({P[13], 26'b0}),
+        .C(level_1[0]),
+        .S(level_1[1])
     );
-
-    assign result = (~resetn | reset) ? 0 : result_adder_64;
-
-    booth_2 b0(.y2(B[1]), .y1(B[0]), .y0(1'b0), .x({{34{A[33]}}, A[33:0]}), .p(p[0]), .c(c[0]));
-
-    genvar i_mul;
-    generate
-        for (i_mul = 1;  i_mul < 17; i_mul = i_mul + 1) begin: mul_booth
-            booth_2 b(.y2(B[2 * i_mul + 1]), .y1(B[2 * i_mul]), .y0(B[2 * i_mul - 1]), 
-            .x({{(34 - 2 * i_mul){A[33]}}, A[33:0], {(2 * i_mul){1'b0}}}), .p(p[i_mul]), .c(c[i_mul]));
-        end
-    endgenerate
-
-    Wallace wallace0(.mul_clk(mul_clk), .resetn(resetn), .n({p[16][0], p[15][0],
-            p[14][0], p[13][0], p[12][0], p[11][0], p[10][0], p[9][0], p[8][0], 
-            p[7][0], p[6][0], p[5][0], p[4][0], p[3][0], p[2][0], p[1][0], p[0][0]}), 
-            .Cin({c_reg[14:11], c[10:0]}), .Cout({s[0], c_wal[0], cout[0]}));
-    genvar i_wal;
-    generate
-        for (i_wal = 1; i_wal < 68; i_wal = i_wal + 1) begin: mul_wal
-            Wallace wallace(.mul_clk(mul_clk), .resetn(resetn), .n({p[16][i_wal], p[15][i_wal], 
-            p[14][i_wal], p[13][i_wal], p[12][i_wal], p[11][i_wal], p[10][i_wal], p[9][i_wal], 
-            p[8][i_wal], p[7][i_wal], p[6][i_wal], p[5][i_wal], p[4][i_wal], p[3][i_wal], p[2][i_wal], 
-            p[1][i_wal], p[0][i_wal]}), .Cin(cout[i_wal - 1]), .Cout({s[i_wal], c_wal[i_wal], cout[i_wal]}));
-        end
-    endgenerate
-
-endmodule
-
-module booth_2(             //booth两位乘
-    input y2,
-    input y1,
-    input y0,
-    input [67:0] x,
-    output [67:0] p,
-    output c
-);
-
-    wire addx, add2x, subx, sub2x;
-    assign addx = ~y2 & y1 & ~y0 | ~y2 & ~y1 & y0;
-    assign add2x = ~y2 & y1 & y0;
-    assign subx = y2 & y1 & ~y0 | y2 & ~y1 & y0;
-    assign sub2x = y2 & ~y1 && ~y0;
-    assign c = subx | sub2x;
-    assign p[0] = subx & ~x[0] | addx & x[0] | sub2x;
-
-    genvar i_booth;
-    generate
-        for (i_booth = 1; i_booth < 68; i_booth = i_booth + 1) begin: booth_calc
-            assign p[i_booth] = subx & ~x[i_booth] | sub2x & ~x[i_booth - 1] |
-                addx & x[i_booth] | add2x & x[i_booth - 1]; 
-        end
-    endgenerate
-
-endmodule
-
-module Wallace(             //Wallace树
-    input mul_clk,
-    input resetn,
-    input [16:0] n,
-    input [14:0] Cin,
-    output [16:0] Cout
-);
-
-    wire [4:0] s1;
-    wire [3:0] s2;
-    wire [1:0] s3;
-
-    reg [1:0] s3_reg;
-    reg [3:0] c10_7_reg;
-
-    wire [1:0] s4;
-    wire s5;
-    wire s6;
-
-    genvar i_w1;
-    generate
-        for (i_w1 = 0; i_w1 < 5; i_w1 = i_w1 + 1) begin: wallace1
-            Full_Adder adder(.A(n[i_w1 * 3]), .B(n[i_w1 * 3 + 1]), .Cin(n[i_w1 * 3 + 2]),
-            .S(s1[i_w1]), .Cout(Cout[i_w1]));
-        end
-    endgenerate
-
-    Full_Adder add2_5(.A(s1[0]), .B(s1[1]), .Cin(s1[2]),
-    .S(s2[0]), .Cout(Cout[5]));
-
-    Full_Adder add2_6(.A(s1[3]), .B(s1[4]), .Cin(n[15]),
-    .S(s2[1]), .Cout(Cout[6]));
-
-    Full_Adder add2_7(.A(Cin[0]), .B(Cin[1]), .Cin(Cin[2]),
-    .S(s2[2]), .Cout(Cout[7]));
-
-    Full_Adder add2_8(.A(Cin[3]), .B(Cin[4]), .Cin(n[16]),
-    .S(s2[3]), .Cout(Cout[8]));
-
-    Full_Adder add3_9(.A(s2[0]), .B(s2[1]), .Cin(s2[2]),
-    .S(s3[0]), .Cout(Cout[9]));
-
-    Full_Adder add3_10(.A(s2[3]), .B(Cin[5]), .Cin(Cin[6]),
-    .S(s3[1]), .Cout(Cout[10]));
-
+    Adder adder1_2 (
+        .in1({P[12], 24'b0}),
+        .in2({P[11], 22'b0}),
+        .in3({P[10], 20'b0}),
+        .C(level_1[2]),
+        .S(level_1[3])
+    );
+    Adder adder1_3 (
+        .in1({P[ 9], 18'b0}),
+        .in2({P[ 8], 16'b0}),
+        .in3({P[ 7], 14'b0}),
+        .C(level_1[4]),
+        .S(level_1[5])
+    );
+    Adder adder1_4 (
+        .in1({P[ 6], 12'b0}),
+        .in2({P[ 5], 10'b0}),
+        .in3({P[ 4],  8'b0}),
+        .C(level_1[6]),
+        .S(level_1[7])
+    );
+    Adder adder1_5 (
+        .in1({P[ 3],  6'b0}),
+        .in2({P[ 2],  4'b0}),
+        .in3({P[ 1],  2'b0}),
+        .C(level_1[8]),
+        .S(level_1[9])
+    );
+    assign level_1[10] = P[0];
+    assign level_1[11] = {P[16], 32'b0};
+//-----------------------------------------Level 2--------------------------------------------- 
+    wire [63:0] level_2 [7:0];
+    Adder adder2_1 (
+        .in1(level_1[0]),
+        .in2(level_1[1]),
+        .in3(level_1[2]),
+        .C(level_2[0]),
+        .S(level_2[1])
+    );
+    Adder adder2_2 (
+        .in1(level_1[3]),
+        .in2(level_1[4]),
+        .in3(level_1[5]),
+        .C(level_2[2]),
+        .S(level_2[3])
+    );
+    Adder adder2_3 (
+        .in1(level_1[6]),
+        .in2(level_1[7]),
+        .in3(level_1[8]),
+        .C(level_2[4]),
+        .S(level_2[5])
+    );
+    Adder adder2_4 (
+        .in1(level_1[9]),
+        .in2(level_1[10]),
+        .in3(level_1[11]),
+        .C(level_2[6]),
+        .S(level_2[7])
+    );
+//-----------------------------------------Level 3--------------------------------------------- 
+    wire [63:0] level_3 [5:0];
+    Adder adder3_1 (
+        .in1(level_2[0]),
+        .in2(level_2[1]),
+        .in3(level_2[2]),
+        .C(level_3[0]),
+        .S(level_3[1])
+    );
+    Adder adder3_2 (
+        .in1(level_2[3]),
+        .in2(level_2[4]),
+        .in3(level_2[5]),
+        .C(level_3[2]),
+        .S(level_3[3])
+    );
+    assign level_3[4] = level_2[6];
+    assign level_3[5] = level_2[7];
+//-----------------------------------------流水级切分-------------------------------------------
+    
+//-----------------------------------------Level 4--------------------------------------------- 
+    wire [63:0] level_4 [3:0];
+    Adder adder4_1 (
+        .in1(level_3[0]),
+        .in2(level_3[1]),
+        .in3(level_3[2]),
+        .C(level_4[0]),
+        .S(level_4[1])
+    );
+    Adder adder4_2 (
+        .in1(level_3[3]),
+        .in2(level_3[4]),
+        .in3(level_3[5]),
+        .C(level_4[2]),
+        .S(level_4[3])
+    );
+//-----------------------------------------Level 5--------------------------------------------- 
+    wire [63:0] level_5 [2:0];
+    Adder adder5_1 (
+        .in1(level_4[0]),
+        .in2(level_4[1]),
+        .in3(level_4[2]),
+        .C(level_5[0]),
+        .S(level_5[1])
+    );
+    assign level_5[2] = level_4[3]; 
+//-----------------------------------------Level 6--------------------------------------------- 
+    wire [63:0] level_6 [1:0];
+    Adder adder6_1 (
+        .in1(level_5[0]),
+        .in2(level_5[1]),
+        .in3(level_5[2]),
+        .C(level_6[0]),
+        .S(level_6[1])
+    );
+//-----------------------------------------流水级切分-------------------------------------------
+    reg  [63:0] level_6_r [1:0];
     always @(posedge mul_clk) begin
-        if (~resetn)
-            {c10_7_reg, s3_reg} <= 6'b0;
+        if(~resetn)
+            {level_6_r[0],level_6_r[1]} <= {2{64'b0}};
         else
-            {c10_7_reg, s3_reg} <= {Cin[10:7], s3};
+            {level_6_r[0],level_6_r[1]} <= {level_6[0],level_6[1]};
     end
-
-    Full_Adder add4_11(.A(s3_reg[0]), .B(s3_reg[1]), .Cin(c10_7_reg[0]),
-    .S(s4[0]), .Cout(Cout[11]));
-
-    Full_Adder add4_12(.A(c10_7_reg[1]), .B(c10_7_reg[2]), .Cin(c10_7_reg[3]),
-    .S(s4[1]), .Cout(Cout[12]));
-
-    Full_Adder add5_13(.A(s4[0]), .B(s4[1]), .Cin(Cin[11]),
-    .S(s5), .Cout(Cout[13]));
-
-    Full_Adder add6_14(.A(s5), .B(Cin[12]), .Cin(Cin[13]),
-    .S(s6), .Cout(Cout[14]));
-
-    Full_Adder add7_15(.A(s6), .B(Cin[14]), .Cin(0),
-    .S(Cout[16]), .Cout(Cout[15]));
-
+    assign result = level_6_r[0] + level_6_r[1];
 endmodule
 
-module Full_Adder(              //1位全加器
-    input A,
-    input B,
-    input Cin,
-    output S,
-    output Cout
-);
-    assign S = ~A &~B & Cin | ~A & B & ~Cin | A & ~B & ~Cin | A & B & Cin;
-    assign Cout = A & B | A & Cin | B & Cin;
-
-endmodule
-
-module adder_4(                 //4位超前进位加法器
-    input c0,
-    input [3:0] p,
-    input [3:0] g,
-    output c1,
-    output c2,
-    output c3,
-    output P,
-    output G
-);
-    assign c1 = g[0] | p[0] & c0;
-    assign c2 = g[1] | p[1] & g[0] | p[1] & p[0] & c0;
-    assign c3 = g[2] | p[2] & g[1] | p[2] & p[1] & g[0] | p[2] & p[1] & p[0] & c0;
-    assign P = &p;
-    assign G = g[3] | p[3] & g[2] | p[3] & p[2] & g[1] | p[3] & p[2] & p[1] & g[0];
-
-endmodule
-
-module adder_64(                //64位超前进位加法器
-    input Cin,
-    input [63:0] A,
-    input [63:0] B,
-    output [63:0] S,
-    output Cout
-);
-
-    wire [63:0] p0;
-    wire [63:0] g0;
-    wire [63:0] c1;
-    wire [15:0] p1;
-    wire [15:0] g1;
-    wire [15:0] c2;
-    wire [3:0] p2;
-    wire [3:0] g2;
-    wire [3:0] c3;
-    wire p3;
-    wire g3;
-
-    assign p0 = A | B;
-    assign g0 = A & B;
-    assign c1[0] = Cin;
-    assign c2[0] = Cin;
-    assign c3[0] = Cin;
-
-    assign Cout = p3 & Cin | g3;
-
-    genvar ic1;
-    generate
-        for (ic1 = 1; ic1 < 4; ic1 = ic1 + 1) begin: value_c2
-            assign c2[ic1 * 4] = c3[ic1];
-        end
-    endgenerate
-
-    genvar ic0;
-    generate
-        for (ic0 = 1; ic0 < 16; ic0 = ic0 + 1) begin: value_c1
-            assign c1[ic0 * 4] = c2[ic0];
-        end
-    endgenerate
-
-    genvar i0;
-    generate
-        for (i0 = 0; i0 < 16; i0 = i0 + 1) begin: floor0
-            adder_4 adder_floor0(.c0(c2[i0]), .p(p0[i0 * 4 + 3 : i0 * 4]), .g(g0[i0 * 4 + 3 : i0 * 4]),
-            .c1(c1[i0 * 4 + 1]), .c2(c1[i0 * 4 + 2]), .c3(c1[i0 * 4 + 3]), .P(p1[i0]), .G(g1[i0]));
-        end
-    endgenerate
-
-    genvar i1;
-    generate
-        for (i1 = 0; i1 < 4; i1 = i1 + 1) begin: floor1
-            adder_4 adder_floor1(.c0(c3[i1]), .p(p1[i1 * 4 + 3 : i1 * 4]), .g(g1[i1 * 4 + 3 : i1 * 4]),
-            .c1(c2[i1 * 4 + 1]), .c2(c2[i1 * 4 + 2]), .c3(c2[i1 * 4 + 3]), .P(p2[i1]), .G(g2[i1]));
-        end
-    endgenerate
-
-    adder_4 adder_floor2 (.c0(Cin), .p(p2), .g(g2),
-            .c1(c3[1]), .c2(c3[2]), .c3(c3[3]), .P(p3), .G(g3));
-
-    genvar i_result;
-    generate
-        for (i_result = 0; i_result < 64; i_result = i_result + 1) begin: calc_Sum
-            Full_Adder sum(.Cin(c1[i_result]), .A(A[i_result]), .B(B[i_result]), .S(S[i_result]), .Cout());
-        end
-    endgenerate
-
-endmodule
