@@ -12,7 +12,7 @@ module IFreg(
     input  wire         inst_sram_addr_ok,
     input  wire         inst_sram_data_ok,
     input  wire [31:0]  inst_sram_rdata,
-    input  wire [ 3:0]  axi_arid,
+    // input  wire [ 3:0]  axi_arid,
     // ds to fs interface
     input  wire         ds_allowin,
     input  wire [33:0]  br_zip,
@@ -47,7 +47,10 @@ module IFreg(
     input  wire [ 2:0] csr_dmw1_pseg,
     input  wire [ 2:0] csr_dmw1_vseg,
         // 直接地址翻译
-    input  wire        csr_direct_addr
+    input  wire        csr_direct_addr,
+
+    //ICACHE ADD!
+    output wire [31:0]  inst_addr_vrtl
 );
     wire        pf_ready_go;
     wire        to_fs_valid;
@@ -59,6 +62,7 @@ module IFreg(
     wire [31:0] seq_pc;
     wire [31:0] nextpc_vrtl; // 虚拟地址 ADDED EXP19
     wire [31:0] nextpc_phy;  // 物理地址 ADDED EXP19
+    assign inst_addr_vrtl =nextpc_vrtl;
 
     wire         br_stall;
     wire         br_taken;
@@ -126,8 +130,9 @@ module IFreg(
     always @(posedge clk) begin
         if(~resetn)
             pf_block <= 1'b0;
-        else if(pf_cancel & ~pf_block & ~axi_arid[0] & ~inst_sram_data_ok)
-            pf_block <= 1'b1;
+        // else if(pf_cancel & ~pf_block & ~inst_sram_data_ok)
+        // else if(pf_cancel & ~pf_block & ~axi_arid[0] & ~inst_sram_data_ok)
+            // pf_block <= 1'b1;
         else if(inst_sram_data_ok)
             pf_block <= 1'b0;
     end
@@ -168,7 +173,7 @@ module IFreg(
         if(~resetn)
             inst_discard <= 1'b0;
         // 流水级取消：当pre-IF阶段发送错误地址请求已被指令SRAM接受 or IF内有有效指令且正在等待数据返回时，需要丢弃一条指令
-        else if(fs_cancel & ~fs_allowin & ~fs_ready_go | pf_cancel & inst_sram_req)
+        else if(fs_cancel & ~fs_allowin & ~fs_ready_go | pf_cancel & inst_sram_req & inst_sram_addr_ok)
             inst_discard <= 1'b1;
         else if(inst_discard & inst_sram_data_ok)
             inst_discard <= 1'b0;
@@ -214,4 +219,7 @@ module IFreg(
     assign fs_tlb_exc[`EARRAY_TLBR_FETCH] = fs_valid & tlb_used & ~s0_found;
     assign fs_tlb_exc[`EARRAY_PIF ] = fs_valid & tlb_used & ~fs_tlb_exc[`EARRAY_TLBR_FETCH] & ~s0_v;
     assign fs_tlb_exc[`EARRAY_PPI_FETCH ] = fs_valid & tlb_used & ~fs_tlb_exc[`EARRAY_PIF ] & (crmd_plv_CSRoutput > s0_plv);
+
+
+
 endmodule

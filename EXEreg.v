@@ -54,7 +54,10 @@ module EXEreg(
         // 直接地址翻译
     input  wire        csr_direct_addr,
     input  wire [18:0] tlbehi_vppn_CSRoutput,
-    input  wire [ 9:0] asid_CSRoutput
+    input  wire [ 9:0] asid_CSRoutput,
+
+    //DCACHE ADD
+    output wire [31:0] vtl_addr//虚地址
 );
 
     wire        es_ready_go;
@@ -121,7 +124,8 @@ module EXEreg(
     wire [31:0] dmw1_paddr;
     wire [31:0] tlb_paddr ;
 
-    wire [31:0] vtl_addr;   // 虚拟地址
+//dcache注释掉：
+    //wire [31:0] vtl_addr;   // 虚拟地址
     wire [31:0] phy_addr;   // 物理地址
 
     reg  [`TLB_ERRLEN-1:0] ds2es_tlb_exc;

@@ -12,7 +12,7 @@ module mycpu_core(
     input  wire         inst_sram_addr_ok,
     input  wire         inst_sram_data_ok,
     input  wire [31:0]  inst_sram_rdata,
-    input  wire [ 3:0]  axi_arid,
+    // input  wire [ 3:0]  axi_arid,
     // data sram interface
     output wire         data_sram_req,
     output wire         data_sram_wr,
@@ -27,7 +27,12 @@ module mycpu_core(
     output wire [31:0] debug_wb_pc,
     output wire [ 3:0] debug_wb_rf_we,
     output wire [ 4:0] debug_wb_rf_wnum,
-    output wire [31:0] debug_wb_rf_wdata
+    output wire [31:0] debug_wb_rf_wdata,
+
+    //ICACHE ADD!
+    output wire [31:0]  inst_addr_vrtl,
+    //DCACHE ADD!
+    output wire [31:0]  data_addr_vrtl
 );
     wire        ds_allowin;
     wire        es_allowin;
@@ -193,7 +198,7 @@ module mycpu_core(
         .inst_sram_data_ok(inst_sram_data_ok),
         .inst_sram_rdata(inst_sram_rdata),
         .inst_sram_wdata(inst_sram_wdata),
-        .axi_arid(axi_arid),
+        // .axi_arid(axi_arid),
         
         .ds_allowin(ds_allowin),
         .br_zip(br_zip),
@@ -224,7 +229,10 @@ module mycpu_core(
         .csr_dmw0_plv3(csr_dmw0_plv3),
         .csr_dmw1_plv0(csr_dmw1_plv0),
         .csr_dmw1_plv3(csr_dmw1_plv3),
-        .csr_direct_addr(csr_direct_addr)
+        .csr_direct_addr(csr_direct_addr),
+
+        //ICACHE ADD!
+        .inst_addr_vrtl(inst_addr_vrtl)
     );
 
     IDreg my_idReg(
@@ -301,7 +309,10 @@ module mycpu_core(
         .csr_dmw0_plv3(csr_dmw0_plv3),
         .csr_dmw1_plv0(csr_dmw1_plv0),
         .csr_dmw1_plv3(csr_dmw1_plv3),
-        .csr_direct_addr(csr_direct_addr)
+        .csr_direct_addr(csr_direct_addr),
+
+        //DCACHE ADD!
+        .vtl_addr (data_addr_vrtl)
     );
 
     MEMreg my_memReg(
@@ -517,5 +528,7 @@ module mycpu_core(
         .r_d1       (r_d1      ),
         .r_v1       (r_v1      )
     );
+
+    
 
 endmodule
