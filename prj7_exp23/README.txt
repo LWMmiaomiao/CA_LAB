@@ -1,0 +1,2 @@
+inst_sram_req删除
+icache_type什么意思？
